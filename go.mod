@@ -1,3 +1,3 @@
-module github.com/libgit2/git2go/v30
+module github.com/nulab/git2go
 
-go 1.13
+go 1.12
