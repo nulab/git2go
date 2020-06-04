@@ -27,6 +27,15 @@ func newAnnotatedCommitFromC(ptr *C.git_annotated_commit, r *Repository) *Annota
 	return mh
 }
 
+func (mh *AnnotatedCommit) Id() *Oid {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	ret := newOidFromC(C.git_annotated_commit_id(mh.ptr))
+	runtime.KeepAlive(mh)
+	return ret
+}
+
 func (mh *AnnotatedCommit) Free() {
 	runtime.SetFinalizer(mh, nil)
 	C.git_annotated_commit_free(mh.ptr)
@@ -49,7 +58,9 @@ func (r *Repository) AnnotatedCommitFromFetchHead(branchName string, remoteURL s
 		return nil, MakeGitError(ret)
 	}
 
-	return newAnnotatedCommitFromC(ptr, r), nil
+	annotatedCommit := newAnnotatedCommitFromC(ptr, r)
+	runtime.KeepAlive(r)
+	return annotatedCommit, nil
 }
 
 func (r *Repository) LookupAnnotatedCommit(oid *Oid) (*AnnotatedCommit, error) {
@@ -62,7 +73,10 @@ func (r *Repository) LookupAnnotatedCommit(oid *Oid) (*AnnotatedCommit, error) {
 	if ret < 0 {
 		return nil, MakeGitError(ret)
 	}
-	return newAnnotatedCommitFromC(ptr, r), nil
+
+	annotatedCommit := newAnnotatedCommitFromC(ptr, r)
+	runtime.KeepAlive(r)
+	return annotatedCommit, nil
 }
 
 func (r *Repository) AnnotatedCommitFromRef(ref *Reference) (*AnnotatedCommit, error) {
@@ -76,7 +90,29 @@ func (r *Repository) AnnotatedCommitFromRef(ref *Reference) (*AnnotatedCommit, e
 	if ret < 0 {
 		return nil, MakeGitError(ret)
 	}
-	return newAnnotatedCommitFromC(ptr, r), nil
+
+	annotatedCommit := newAnnotatedCommitFromC(ptr, r)
+	runtime.KeepAlive(r)
+	return annotatedCommit, nil
+}
+
+func (r *Repository) AnnotatedCommitFromRevspec(spec string) (*AnnotatedCommit, error) {
+	crevspec := C.CString(spec)
+	defer C.free(unsafe.Pointer(crevspec))
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	var ptr *C.git_annotated_commit
+	ret := C.git_annotated_commit_from_revspec(&ptr, r.ptr, crevspec)
+	runtime.KeepAlive(r)
+	if ret < 0 {
+		return nil, MakeGitError(ret)
+	}
+
+	annotatedCommit := newAnnotatedCommitFromC(ptr, r)
+	runtime.KeepAlive(r)
+	return annotatedCommit, nil
 }
 
 type MergeTreeFlag int
@@ -132,7 +168,7 @@ func (mo *MergeOptions) toC() *C.git_merge_options {
 	}
 	return &C.git_merge_options{
 		version:          C.uint(mo.Version),
-		flags:            C.git_merge_flag_t(mo.TreeFlags),
+		flags:            C.uint32_t(mo.TreeFlags),
 		rename_threshold: C.uint(mo.RenameThreshold),
 		target_limit:     C.uint(mo.TargetLimit),
 		file_favor:       C.git_merge_file_favor_t(mo.FileFavor),
@@ -394,7 +430,7 @@ func populateCMergeFileOptions(c *C.git_merge_file_options, options MergeFileOpt
 	c.our_label = C.CString(options.OurLabel)
 	c.their_label = C.CString(options.TheirLabel)
 	c.favor = C.git_merge_file_favor_t(options.Favor)
-	c.flags = C.git_merge_file_flag_t(options.Flags)
+	c.flags = C.uint32_t(options.Flags)
 	c.marker_size = C.ushort(options.MarkerSize)
 }
 

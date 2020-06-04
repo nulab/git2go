@@ -3,8 +3,11 @@ package git
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
+	"path"
 	"testing"
 )
 
@@ -151,4 +154,82 @@ func TestOdbForeach(t *testing.T) {
 	if err != to_return {
 		t.Fatalf("Odb.ForEach() did not return the expected error, got %v", err)
 	}
+}
+
+func TestOdbWritepack(t *testing.T) {
+	t.Parallel()
+	repo := createTestRepo(t)
+	defer cleanupTestRepo(t, repo)
+
+	_, _ = seedTestRepo(t, repo)
+
+	odb, err := repo.Odb()
+	checkFatal(t, err)
+
+	var finalStats TransferProgress
+	writepack, err := odb.NewWritePack(func(stats TransferProgress) ErrorCode {
+		finalStats = stats
+		return ErrOk
+	})
+	checkFatal(t, err)
+	defer writepack.Free()
+
+	_, err = writepack.Write(outOfOrderPack)
+	checkFatal(t, err)
+	err = writepack.Commit()
+	checkFatal(t, err)
+
+	if finalStats.TotalObjects != 3 {
+		t.Errorf("mismatched transferred objects, expected 3, got %v", finalStats.TotalObjects)
+	}
+	if finalStats.ReceivedObjects != 3 {
+		t.Errorf("mismatched received objects, expected 3, got %v", finalStats.ReceivedObjects)
+	}
+	if finalStats.IndexedObjects != 3 {
+		t.Errorf("mismatched indexed objects, expected 3, got %v", finalStats.IndexedObjects)
+	}
+}
+
+func TestOdbBackendLoose(t *testing.T) {
+	t.Parallel()
+	repo := createTestRepo(t)
+	defer cleanupTestRepo(t, repo)
+
+	_, _ = seedTestRepo(t, repo)
+
+	odb, err := repo.Odb()
+	checkFatal(t, err)
+
+	looseObjectsDir, err := ioutil.TempDir("", fmt.Sprintf("loose_objects_%s", path.Base(repo.Path())))
+	checkFatal(t, err)
+	defer os.RemoveAll(looseObjectsDir)
+
+	looseObjectsBackend, err := NewOdbBackendLoose(looseObjectsDir, -1, false, 0, 0)
+	checkFatal(t, err)
+	if err := odb.AddBackend(looseObjectsBackend, 999); err != nil {
+		looseObjectsBackend.Free()
+		checkFatal(t, err)
+	}
+
+	str := "hello, world!"
+
+	writeStream, err := odb.NewWriteStream(int64(len(str)), ObjectBlob)
+	checkFatal(t, err)
+	n, err := io.WriteString(writeStream, str)
+	checkFatal(t, err)
+	if n != len(str) {
+		t.Fatalf("Bad write length %v != %v", n, len(str))
+	}
+
+	err = writeStream.Close()
+	checkFatal(t, err)
+
+	expectedId, err := NewOid("30f51a3fba5274d53522d0f19748456974647b4f")
+	checkFatal(t, err)
+	if !writeStream.Id.Equal(expectedId) {
+		t.Fatalf("writeStream.id = %v; want %v", writeStream.Id, expectedId)
+	}
+
+	_, err = os.Stat(path.Join(looseObjectsDir, expectedId.String()[:2], expectedId.String()[2:]))
+	checkFatal(t, err)
 }

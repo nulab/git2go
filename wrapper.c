@@ -2,6 +2,7 @@
 #include <git2.h>
 #include <git2/sys/odb_backend.h>
 #include <git2/sys/refdb_backend.h>
+#include <git2/sys/cred.h>
 
 typedef int (*gogit_submodule_cbk)(git_submodule *sm, const char *name, void *payload);
 
@@ -178,6 +179,38 @@ int _go_git_writestream_close(git_writestream *stream)
 void _go_git_writestream_free(git_writestream *stream)
 {
 	stream->free(stream);
+}
+
+git_credtype_t _go_git_cred_credtype(git_cred *cred) {
+	return cred->credtype;
+}
+
+int _go_git_odb_write_pack(git_odb_writepack **out, git_odb *db, void *progress_payload)
+{
+	return git_odb_write_pack(out, db, (git_transfer_progress_cb)transferProgressCallback, progress_payload);
+}
+
+int _go_git_odb_writepack_append(git_odb_writepack *writepack, const void *data, size_t size, git_transfer_progress *stats)
+{
+	return writepack->append(writepack, data, size, stats);
+}
+
+int _go_git_odb_writepack_commit(git_odb_writepack *writepack, git_transfer_progress *stats)
+{
+	return writepack->commit(writepack, stats);
+}
+
+void _go_git_odb_writepack_free(git_odb_writepack *writepack)
+{
+	writepack->free(writepack);
+}
+
+int _go_git_indexer_new(git_indexer **out, const char *path, unsigned int mode, git_odb *odb, void *progress_cb_payload)
+{
+	git_indexer_options indexer_options = GIT_INDEXER_OPTIONS_INIT;
+	indexer_options.progress_cb = (git_transfer_progress_cb)transferProgressCallback;
+	indexer_options.progress_cb_payload = progress_cb_payload;
+	return git_indexer_new(out, path, mode, odb, &indexer_options);
 }
 
 /* EOF */

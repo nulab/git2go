@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+func TestAnnotatedCommitFromRevspec(t *testing.T) {
+	t.Parallel()
+	repo := createTestRepo(t)
+	defer cleanupTestRepo(t, repo)
+
+	seedTestRepo(t, repo)
+
+	mergeHead, err := repo.AnnotatedCommitFromRevspec("refs/heads/master")
+	checkFatal(t, err)
+
+	expectedId := "473bf778b67b6d53e2ab289e0f1a2e8addef2fc2"
+	if mergeHead.Id().String() != expectedId {
+		t.Errorf("mergeHead.Id() = %v, want %v", mergeHead.Id(), expectedId)
+	}
+}
+
 func TestMergeWithSelf(t *testing.T) {
 	t.Parallel()
 	repo := createTestRepo(t)
@@ -17,6 +33,11 @@ func TestMergeWithSelf(t *testing.T) {
 
 	mergeHead, err := repo.AnnotatedCommitFromRef(master)
 	checkFatal(t, err)
+
+	expectedId := "473bf778b67b6d53e2ab289e0f1a2e8addef2fc2"
+	if mergeHead.Id().String() != expectedId {
+		t.Errorf("mergeHead.Id() = %v, want %v", mergeHead.Id(), expectedId)
+	}
 
 	mergeHeads := make([]*AnnotatedCommit, 1)
 	mergeHeads[0] = mergeHead
@@ -88,7 +109,7 @@ func TestMergeTreesWithoutAncestor(t *testing.T) {
 	if !index.HasConflicts() {
 		t.Fatal("expected conflicts in the index")
 	}
-	_, err = index.GetConflict("README")
+	_, err = index.Conflict("README")
 	checkFatal(t, err)
 
 }
